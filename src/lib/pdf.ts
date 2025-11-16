@@ -5,9 +5,16 @@ interface PdfOptions {
   signal?: AbortSignal;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type JsPDFDocument = any;
+
 const PAGE_MARGIN = 40;
-const LINE_HEIGHT = 16;
-const IMAGE_MAX_WIDTH = 480;
+const LINE_HEIGHT = 18; // Increased for better readability
+const IMAGE_MAX_WIDTH = 500; // Slightly larger for better visibility
+const TITLE_FONT_SIZE = 24;
+const HEADING_FONT_SIZE = 16;
+const BODY_FONT_SIZE = 11;
+const LABEL_FONT_SIZE = 10;
 
 export async function generatePDFReport(session: SessionExport, options: PdfOptions = {}): Promise<void> {
   const { jsPDF } = await import('jspdf');
@@ -46,79 +53,128 @@ export async function generatePDFReport(session: SessionExport, options: PdfOpti
   doc.save(filename);
 }
 
-function addTitlePage(doc: any, session: SessionExport) {
-  doc.setFontSize(22);
-  doc.text('Browser Screen Recorder Session', PAGE_MARGIN, PAGE_MARGIN + 20);
-  doc.setFontSize(12);
+function addTitlePage(doc: JsPDFDocument, session: SessionExport) {
+  // Title with better spacing
+  doc.setFontSize(TITLE_FONT_SIZE);
+  doc.setFont(undefined, 'bold');
+  doc.setTextColor(0, 0, 0); // Black for better contrast
+  doc.text('Browser Screen Recorder Session', PAGE_MARGIN, PAGE_MARGIN + 30);
+  
+  // Subtitle
+  doc.setFontSize(BODY_FONT_SIZE);
+  doc.setFont(undefined, 'normal');
+  doc.setTextColor(60, 60, 60); // Dark gray
+  doc.text('Session Report', PAGE_MARGIN, PAGE_MARGIN + 50);
+  
+  // Metadata section
+  doc.setFontSize(BODY_FONT_SIZE);
   const meta = session.metadata;
   const domains = Array.from(new Set(session.events.map((event) => safeHostname(event.url)))).filter(Boolean);
 
   const rows = [
     ['Session ID', meta.sessionId],
-    ['Started', meta.startedAt],
-    ['Ended', meta.endedAt ?? 'In progress'],
+    ['Started', formatTimestamp(meta.startedAt)],
+    ['Ended', meta.endedAt ? formatTimestamp(meta.endedAt) : 'In progress'],
     ['Total events', String(session.events.length)],
     ['Domains', domains.join(', ') || '(none)'],
   ];
 
-  let offsetY = PAGE_MARGIN + 60;
+  let offsetY = PAGE_MARGIN + 90;
   rows.forEach(([label, value]) => {
     doc.setFont(undefined, 'bold');
+    doc.setFontSize(LABEL_FONT_SIZE);
+    doc.setTextColor(0, 0, 0);
     doc.text(`${label}:`, PAGE_MARGIN, offsetY);
     doc.setFont(undefined, 'normal');
-    wrapText(doc, value, PAGE_MARGIN + 120, offsetY, 460);
-    offsetY += LINE_HEIGHT * Math.ceil(value.length / 80);
+    doc.setFontSize(BODY_FONT_SIZE);
+    doc.setTextColor(40, 40, 40);
+    wrapText(doc, value, PAGE_MARGIN + 140, offsetY, 420);
+    offsetY += LINE_HEIGHT * Math.max(1, Math.ceil(value.length / 70)) + 4; // Better spacing
   });
 
   doc.addPage();
 }
 
-async function renderEventBlock(doc: any, event: RecorderEvent, startY: number): Promise<number> {
+async function renderEventBlock(doc: JsPDFDocument, event: RecorderEvent, startY: number): Promise<number> {
   const left = PAGE_MARGIN;
   let cursorY = startY;
 
-  doc.setFontSize(14);
+  // Event type header with better styling
+  doc.setFontSize(HEADING_FONT_SIZE);
   doc.setFont(undefined, 'bold');
-  doc.text(`${event.type.toUpperCase()} — ${formatTimestamp(event.timestamp)}`, left, cursorY);
-  cursorY += LINE_HEIGHT;
+  doc.setTextColor(0, 0, 0);
+  const eventHeader = `${event.type.toUpperCase()} — ${formatTimestamp(event.timestamp)}`;
+  doc.text(eventHeader, left, cursorY);
+  cursorY += LINE_HEIGHT + 4;
 
-  doc.setFontSize(11);
+  // URL with label
+  doc.setFontSize(BODY_FONT_SIZE);
+  doc.setFont(undefined, 'bold');
+  doc.setTextColor(0, 0, 0);
+  doc.text('URL:', left, cursorY);
   doc.setFont(undefined, 'normal');
-  wrapText(doc, `URL: ${event.url}`, left, cursorY, 500);
-  cursorY += LINE_HEIGHT * 2;
+  doc.setTextColor(30, 30, 30);
+  wrapText(doc, event.url, left + 40, cursorY, 450);
+  cursorY += LINE_HEIGHT * 2 + 2;
 
   if (event.element) {
     const descriptor = buildElementDescription(event);
-    wrapText(doc, `Element: ${descriptor}`, left, cursorY, 500);
-    cursorY += LINE_HEIGHT * 2;
+    doc.setFont(undefined, 'bold');
+    doc.setTextColor(0, 0, 0);
+    doc.text('Element:', left, cursorY);
+    doc.setFont(undefined, 'normal');
+    doc.setTextColor(30, 30, 30);
+    wrapText(doc, descriptor, left + 60, cursorY, 430);
+    cursorY += LINE_HEIGHT * 2 + 2;
   }
 
   if (event.typedText) {
-    wrapText(doc, `Typed: ${event.typedText}`, left, cursorY, 500);
-    cursorY += LINE_HEIGHT * 2;
+    doc.setFont(undefined, 'bold');
+    doc.setTextColor(0, 0, 0);
+    doc.text('Typed:', left, cursorY);
+    doc.setFont(undefined, 'normal');
+    doc.setTextColor(0, 80, 150); // Blue for typed text to make it stand out
+    wrapText(doc, event.typedText, left + 50, cursorY, 440);
+    cursorY += LINE_HEIGHT * 2 + 2;
   }
 
   if (event.navigationUrl) {
-    wrapText(doc, `Navigation: ${event.navigationUrl}`, left, cursorY, 500);
-    cursorY += LINE_HEIGHT * 2;
+    doc.setFont(undefined, 'bold');
+    doc.setTextColor(0, 0, 0);
+    doc.text('Navigation:', left, cursorY);
+    doc.setFont(undefined, 'normal');
+    doc.setTextColor(30, 30, 30);
+    wrapText(doc, event.navigationUrl, left + 80, cursorY, 410);
+    cursorY += LINE_HEIGHT * 2 + 2;
   }
 
   if (event.visibilityState) {
-    wrapText(doc, `Visibility: ${event.visibilityState}`, left, cursorY, 500);
-    cursorY += LINE_HEIGHT * 2;
+    doc.setFont(undefined, 'bold');
+    doc.setTextColor(0, 0, 0);
+    doc.text('Visibility:', left, cursorY);
+    doc.setFont(undefined, 'normal');
+    doc.setTextColor(30, 30, 30);
+    doc.text(event.visibilityState, left + 80, cursorY);
+    cursorY += LINE_HEIGHT * 2 + 2;
   }
 
   if (event.screenshotDataUrl) {
     try {
       const image = await prepareImage(event.screenshotDataUrl);
       const height = (IMAGE_MAX_WIDTH / image.width) * image.height;
-      doc.addImage(image.dataUrl, 'JPEG', left, cursorY, IMAGE_MAX_WIDTH, height);
-      cursorY += height + LINE_HEIGHT;
+      // Support PNG format for better quality
+      const format = event.screenshotDataUrl.startsWith('data:image/png') ? 'PNG' : 'JPEG';
+      doc.addImage(image.dataUrl, format, left, cursorY, IMAGE_MAX_WIDTH, height);
+      cursorY += height + LINE_HEIGHT + 4;
     } catch (error) {
+      doc.setFont(undefined, 'normal');
+      doc.setTextColor(200, 0, 0); // Red for errors
       wrapText(doc, `[Image failed to embed: ${(error as Error).message}]`, left, cursorY, 500);
       cursorY += LINE_HEIGHT * 2;
     }
   } else {
+    doc.setFont(undefined, 'normal');
+    doc.setTextColor(120, 120, 120); // Gray for missing data
     wrapText(doc, '[No screenshot captured]', left, cursorY, 500);
     cursorY += LINE_HEIGHT * 2;
   }
@@ -128,7 +184,7 @@ async function renderEventBlock(doc: any, event: RecorderEvent, startY: number):
   return cursorY;
 }
 
-function wrapText(doc: any, text: string, x: number, y: number, width: number) {
+function wrapText(doc: JsPDFDocument, text: string, x: number, y: number, width: number) {
   const lines = doc.splitTextToSize(text, width);
   doc.text(lines, x, y);
 }
@@ -170,28 +226,24 @@ async function prepareImage(dataUrl: string): Promise<{ dataUrl: string; width: 
     if (typeof document === 'undefined') {
       throw error;
     }
+    const { default: html2canvas } = await import('html2canvas');
+    const container = document.createElement('div');
+    container.style.position = 'fixed';
+    container.style.left = '-10000px';
+    const img = document.createElement('img');
+    img.src = dataUrl;
+    img.alt = 'screenshot';
+    container.appendChild(img);
+    document.body.appendChild(container);
     try {
-      const { default: html2canvas } = await import('html2canvas');
-      const container = document.createElement('div');
-      container.style.position = 'fixed';
-      container.style.left = '-10000px';
-      const img = document.createElement('img');
-      img.src = dataUrl;
-      img.alt = 'screenshot';
-      container.appendChild(img);
-      document.body.appendChild(container);
-      try {
-        const canvas = await html2canvas(container);
-        return {
-          dataUrl: canvas.toDataURL('image/jpeg', 0.8),
-          width: canvas.width,
-          height: canvas.height,
-        };
-      } finally {
-        document.body.removeChild(container);
-      }
-    } catch (fallbackError) {
-      throw fallbackError;
+      const canvas = await html2canvas(container);
+      return {
+        dataUrl: canvas.toDataURL('image/jpeg', 0.8),
+        width: canvas.width,
+        height: canvas.height,
+      };
+    } finally {
+      document.body.removeChild(container);
     }
   }
 }
@@ -203,8 +255,11 @@ function loadAndScaleImage(dataUrl: string): Promise<{ dataUrl: string; width: n
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
-      const scale = Math.min(1, IMAGE_MAX_WIDTH / img.width, 1200 / img.width);
+      // Preserve original quality, only scale if too large
+      const maxWidth = 1200; // Higher max width for better quality
+      const scale = Math.min(1, IMAGE_MAX_WIDTH / img.width, maxWidth / img.width);
       if (scale >= 1) {
+        // Keep original format (PNG or JPEG)
         resolve({ dataUrl, width: img.width, height: img.height });
         return;
       }
@@ -216,9 +271,19 @@ function loadAndScaleImage(dataUrl: string): Promise<{ dataUrl: string; width: n
         reject(new Error('Canvas context unavailable'));
         return;
       }
+      // Use high-quality rendering
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = 'high';
       context.drawImage(img, 0, 0, canvas.width, canvas.height);
+      
+      // Preserve original format - use PNG if original was PNG, otherwise high-quality JPEG
+      const isPNG = dataUrl.startsWith('data:image/png');
+      const outputDataUrl = isPNG
+        ? canvas.toDataURL('image/png')
+        : canvas.toDataURL('image/jpeg', 0.95); // Higher quality JPEG
+      
       resolve({
-        dataUrl: canvas.toDataURL('image/jpeg', 0.85),
+        dataUrl: outputDataUrl,
         width: canvas.width,
         height: canvas.height,
       });

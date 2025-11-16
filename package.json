@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "test": "jest",
     "demo": "node scripts/generate-demo.js",
-    "extension-build": "tsc -b && vite build --config vite.extension.config.ts && node scripts/copy-extension.js"
+    "extension-build": "tsc -b && node scripts/build-extension.js"
   },
   "dependencies": {
     "html2canvas": "^1.4.1",

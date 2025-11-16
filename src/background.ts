@@ -1,10 +1,21 @@
 const TAB_EVENT = 'RECORDER_TAB_EVENT';
+const TOGGLE_PANEL = 'RECORDER_TOGGLE_PANEL';
+
+// Handle extension icon click to toggle panel
+chrome.action.onClicked.addListener((tab) => {
+  if (tab.id) {
+    chrome.tabs.sendMessage(tab.id, { type: TOGGLE_PANEL }, () => {
+      void chrome.runtime.lastError;
+    });
+  }
+});
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'RECORDER_CAPTURE_TAB') {
+    const format = message.format || 'png'; // Default to PNG for higher quality
     chrome.tabs.captureVisibleTab(
       sender.tab?.windowId ?? chrome.windows.WINDOW_ID_CURRENT,
-      { format: 'png' },
+      { format: format as 'png' | 'jpeg' },
       (dataUrl) => {
         if (chrome.runtime.lastError) {
           sendResponse({ dataUrl: null, error: chrome.runtime.lastError.message });

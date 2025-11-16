@@ -81,7 +81,7 @@ export class ScreenshotService {
 
     try {
       const response = await new Promise<{ dataUrl?: string } | null>((resolve, reject) => {
-        chromeApi.runtime.sendMessage({ type: 'RECORDER_CAPTURE_TAB' }, (result) => {
+        chromeApi.runtime.sendMessage({ type: 'RECORDER_CAPTURE_TAB', format: 'png' }, (result) => {
           const lastError = chromeApi.runtime.lastError;
           if (lastError) {
             reject(lastError);
@@ -104,17 +104,30 @@ export class ScreenshotService {
 
     const { default: html2canvas } = await import('html2canvas');
     const target = document.body;
+    const scale = Math.min(2, window.devicePixelRatio || 1); // Higher quality with device pixel ratio
     const canvas = await html2canvas(target, {
       windowWidth: document.documentElement.scrollWidth,
       windowHeight: document.documentElement.scrollHeight,
+      width: document.documentElement.scrollWidth,
+      height: document.documentElement.scrollHeight,
+      scale: scale,
       useCORS: true,
+      allowTaint: false,
       removeContainer: true,
       logging: false,
+      backgroundColor: '#ffffff',
+      imageTimeout: 15000,
       onclone: (doc) => {
         doc.body.setAttribute('data-recorder-snapshot', reason ?? 'snapshot');
+        // Hide recorder UI in screenshot
+        const recorderUI = doc.querySelector('[data-recorder-ui="true"]');
+        if (recorderUI) {
+          (recorderUI as HTMLElement).style.display = 'none';
+        }
       },
     });
-    return canvas.toDataURL('image/jpeg', 0.9);
+    // Use PNG for better quality, or high-quality JPEG
+    return canvas.toDataURL('image/png');
   }
 }
 
