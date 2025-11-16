@@ -1,0 +1,275 @@
+.recorder-panel {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  width: 420px;
+  max-height: 90vh;
+  background: #0f172a;
+  color: #f8fafc;
+  border-radius: 16px;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.5);
+  z-index: 2147483647;
+  padding: 16px;
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.recorder-panel * {
+  box-sizing: border-box;
+}
+
+.recorder-panel h2,
+.recorder-panel h3 {
+  margin: 0;
+  font-weight: 600;
+}
+
+.recorder-panel button {
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.recorder-panel button:disabled {
+  background: rgba(255, 255, 255, 0.2);
+  cursor: not-allowed;
+}
+
+.recorder-panel input[type='text'],
+.recorder-panel input[type='checkbox'] {
+  accent-color: #2563eb;
+}
+
+.recorder-panel input[type='text'] {
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 6px 8px;
+  color: #fff;
+  width: 100%;
+}
+
+.recorder-panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.recorder-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.recorder-panel__status {
+  font-size: 0.85rem;
+  padding: 4px 8px;
+  border-radius: 999px;
+  display: inline-block;
+  margin-top: 4px;
+}
+
+.recorder-panel__status--on {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+}
+
+.recorder-panel__status--off {
+  background: rgba(248, 113, 113, 0.2);
+  color: #f87171;
+}
+
+.recorder-panel__privacy {
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.recorder-panel__privacy-warning {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+  color: #fbbf24;
+}
+
+.recorder-panel__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+
+.recorder-panel__filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+  margin-bottom: 8px;
+}
+
+.recorder-panel__filters h3 {
+  margin-bottom: 8px;
+}
+
+.recorder-panel__apply {
+  width: 100%;
+}
+
+.recorder-panel__search {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.recorder-panel__type-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 0.8rem;
+}
+
+.recorder-panel__type-filters label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.recorder-panel__feed {
+  flex: 1;
+  min-height: 120px;
+  max-height: 240px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-right: 8px;
+}
+
+.recorder-panel__feed::-webkit-scrollbar {
+  width: 6px;
+}
+
+.recorder-panel__feed::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.recorder-panel__empty {
+  color: rgba(255, 255, 255, 0.6);
+  text-align: center;
+  margin: 0;
+}
+
+.recorder-event {
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.recorder-event__meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  opacity: 0.8;
+}
+
+.recorder-event__type {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.recorder-event__url {
+  margin: 0;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.7);
+  word-break: break-all;
+}
+
+.recorder-event__text,
+.recorder-event__typed {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.recorder-event__thumbnail {
+  border: none;
+  padding: 0;
+  background: transparent;
+  cursor: zoom-in;
+  max-width: 200px;
+  align-self: flex-start;
+}
+
+.recorder-event__thumbnail img {
+  border-radius: 8px;
+  width: 100%;
+  height: auto;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.recorder-panel__modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2147483647;
+  padding: 24px;
+}
+
+.recorder-panel__modal-content {
+  background: #0f172a;
+  border-radius: 16px;
+  padding: 16px;
+  width: min(480px, 90vw);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.recorder-panel__modal-content progress {
+  width: 100%;
+}
+
+.recorder-panel__preview img {
+  max-height: 60vh;
+  object-fit: contain;
+}
+
+.recorder-panel__toast {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translate(-50%, -100%);
+  background: rgba(15, 23, 42, 0.9);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.recorder-panel__toast button {
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 1rem;
+  padding: 0;
+}
+

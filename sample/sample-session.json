@@ -1,0 +1,63 @@
+{
+  "metadata": {
+    "sessionId": "sample-session",
+    "startedAt": "2024-12-01T18:00:00.000Z",
+    "endedAt": "2024-12-01T18:05:00.000Z"
+  },
+  "events": [
+    {
+      "id": "evt-1",
+      "sessionId": "sample-session",
+      "type": "click",
+      "timestamp": "2024-12-01T18:00:10.000Z",
+      "url": "https://www.youtube.com/feed/trending",
+      "element": {
+        "tag": "button",
+        "id": "",
+        "classes": ["yt-spec-button-shape-next"],
+        "textSnippet": "Search",
+        "selector": "button.yt-spec-button-shape-next"
+      },
+      "coords": {
+        "x": 420,
+        "y": 80,
+        "rect": {
+          "x": 400,
+          "y": 70,
+          "width": 100,
+          "height": 40
+        }
+      },
+      "screenshotDataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAEklEQVR42mP8z/C/HwAFgwJ/l2nnLwAAAABJRU5ErkJggg==",
+      "meta": { "browser": "Sample", "userAgent": "Sample" }
+    },
+    {
+      "id": "evt-2",
+      "sessionId": "sample-session",
+      "type": "input_commit",
+      "timestamp": "2024-12-01T18:00:20.000Z",
+      "url": "https://www.youtube.com/",
+      "element": {
+        "tag": "input",
+        "id": "search",
+        "classes": ["yt-searchbox"],
+        "textSnippet": "Search YouTube",
+        "selector": "#search"
+      },
+      "typedText": "lofi beats",
+      "screenshotDataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAEklEQVR42mP8z/C/HwAFgwJ/l2nnLwAAAABJRU5ErkJggg==",
+      "meta": { "browser": "Sample", "userAgent": "Sample", "inputReason": "blur" }
+    },
+    {
+      "id": "evt-3",
+      "sessionId": "sample-session",
+      "type": "navigation",
+      "timestamp": "2024-12-01T18:02:00.000Z",
+      "url": "https://www.youtube.com/",
+      "navigationUrl": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "screenshotDataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAEklEQVR42mP8z/C/HwAFgwJ/l2nnLwAAAABJRU5ErkJggg==",
+      "meta": { "browser": "Sample", "userAgent": "Sample" }
+    }
+  ]
+}
+
