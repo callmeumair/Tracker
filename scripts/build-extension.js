@@ -49,26 +49,6 @@ async function buildBackground() {
   });
 }
 
-async function copyIcons() {
-  const dist = path.resolve(root, 'dist/extension');
-  const iconsSrc = path.resolve(root, 'public/icons');
-  const iconsDest = path.join(dist, 'icons');
-  
-  try {
-    await fs.mkdir(iconsDest, { recursive: true });
-    const files = await fs.readdir(iconsSrc);
-    
-    for (const file of files) {
-      const srcPath = path.join(iconsSrc, file);
-      const destPath = path.join(iconsDest, file);
-      await fs.copyFile(srcPath, destPath);
-    }
-    console.log('[extension-build] Copied icon files');
-  } catch (error) {
-    console.warn('[extension-build] Could not copy icons:', error.message);
-  }
-}
-
 async function copyManifest() {
   const dist = path.resolve(root, 'dist/extension');
   const manifestSrc = path.resolve(root, 'manifest.json');
@@ -111,7 +91,6 @@ async function main() {
   
   await buildContent();
   await buildBackground();
-  await copyIcons();
   await copyManifest();
   console.log('[extension-build] Extension build complete!');
 }

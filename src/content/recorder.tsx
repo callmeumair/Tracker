@@ -39,25 +39,23 @@ export async function bootstrapRecorder(): Promise<RecorderRuntime> {
     container.id = 'browser-recorder-panel';
     container.setAttribute('data-recorder-ui', 'true');
     // Add inline styles as fallback in case CSS doesn't load
-    // These styles ensure the panel has proper dimensions even when hidden
     container.style.cssText = `
       position: fixed !important;
       right: 24px !important;
       bottom: 24px !important;
-      width: clamp(320px, 36vw, 460px) !important;
-      max-width: 460px !important;
+      width: 420px !important;
       max-height: 90vh !important;
-      background: #081028 !important;
-      color: #F8FAFC !important;
+      background: #0f172a !important;
+      color: #f8fafc !important;
       border-radius: 16px !important;
-      box-shadow: 0 10px 30px rgba(2, 8, 23, 0.35) !important;
+      box-shadow: 0 20px 50px rgba(15, 23, 42, 0.5) !important;
       z-index: 2147483647 !important;
-      padding: 0 !important;
-      font-family: 'Inter', 'Roboto', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+      padding: 16px !important;
+      font-family: system-ui, -apple-system, sans-serif !important;
       display: none !important;
       flex-direction: column !important;
-      overflow: hidden !important;
-      box-sizing: border-box !important;
+      gap: 12px !important;
+      overflow: auto !important;
     `;
     document.body.appendChild(container);
     console.log('[Browser Recorder] Panel container created and appended to body (hidden by default)');
@@ -79,39 +77,34 @@ export async function bootstrapRecorder(): Promise<RecorderRuntime> {
     );
     console.log('[Browser Recorder] React component rendered');
     
-    // Verify container and React content are properly rendered
+    // Verify container is visible
     setTimeout(() => {
       const checkContainer = document.getElementById('browser-recorder-panel');
       if (checkContainer) {
-        const styles = window.getComputedStyle(checkContainer);
-        const isVisible = styles.display !== 'none';
         const rect = checkContainer.getBoundingClientRect();
+        const styles = window.getComputedStyle(checkContainer);
+        console.log('[Browser Recorder] Panel visibility check:', {
+          exists: !!checkContainer,
+          display: styles.display,
+          visibility: styles.visibility,
+          opacity: styles.opacity,
+          zIndex: styles.zIndex,
+          position: styles.position,
+          width: rect.width,
+          height: rect.height,
+          top: rect.top,
+          right: window.innerWidth - rect.right,
+          bottom: rect.bottom,
+          left: rect.left,
+        });
         
-        // Only log detailed info in development or if there's an actual issue
-        if (isVisible) {
-          console.log('[Browser Recorder] Panel visibility check:', {
-            exists: !!checkContainer,
-            display: styles.display,
-            visibility: styles.visibility,
-            opacity: styles.opacity,
-            zIndex: styles.zIndex,
-            position: styles.position,
-            width: rect.width,
-            height: rect.height,
-          });
-          
-          // Only warn if panel should be visible but has zero dimensions
-          if (rect.width === 0 || rect.height === 0) {
-            console.warn('[Browser Recorder] Panel has zero dimensions - CSS may not be loaded');
-          }
-        } else {
-          // Panel is intentionally hidden, no need to check dimensions
-          console.log('[Browser Recorder] Panel is hidden (as expected)');
+        if (rect.width === 0 || rect.height === 0) {
+          console.warn('[Browser Recorder] Panel has zero dimensions - CSS may not be loaded');
         }
       } else {
         console.error('[Browser Recorder] Panel container disappeared after render!');
       }
-    }, 200);
+    }, 100);
   } catch (renderError) {
     console.error('[Browser Recorder] React render failed:', renderError);
     // Fallback: show a simple message
@@ -139,18 +132,13 @@ export function togglePanel() {
     return;
   }
   
-  const computedStyle = window.getComputedStyle(container);
-  const isVisible = container.style.display !== 'none' && computedStyle.display !== 'none';
+  const isVisible = container.style.display !== 'none' && window.getComputedStyle(container).display !== 'none';
   
   if (isVisible) {
     container.style.display = 'none';
     console.log('[Browser Recorder] Panel hidden');
   } else {
-    // Use flex to match CSS class
     container.style.display = 'flex';
-    // Ensure it's visible
-    container.style.visibility = 'visible';
-    container.style.opacity = '1';
     console.log('[Browser Recorder] Panel shown');
   }
 }
