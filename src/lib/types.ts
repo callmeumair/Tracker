@@ -28,6 +28,7 @@ export interface RecorderEvent {
   id: string;
   sessionId: string;
   type: RecorderEventType;
+  tabId?: number;
   timestamp: string;
   url: string;
   element?: ElementDescriptor;
@@ -43,6 +44,12 @@ export interface RecorderEvent {
     [key: string]: unknown;
   };
 }
+
+/**
+ * Public shape for events that can be added to the recorder runtime.
+ * Kept separately to make it easier to adjust ingestion requirements later.
+ */
+export type RecordedEvent = RecorderEvent;
 
 export interface RecorderFilters {
   domainAllowlist: string[];

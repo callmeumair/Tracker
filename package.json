@@ -5,12 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "npx tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "jest",
     "demo": "node scripts/generate-demo.js",
-    "extension-build": "tsc -b && node scripts/build-extension.js"
+    "extension-build": "npx tsc -b && node scripts/build-extension.js"
   },
   "dependencies": {
     "html2canvas": "^1.4.1",

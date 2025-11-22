@@ -249,6 +249,14 @@ export function RecorderPanel({ runtime }: RecorderPanelProps) {
             <article className="recorder-event" key={event.id}>
               <div className="recorder-event__meta">
                 <span className="recorder-event__type">{event.type}</span>
+                {event.tabId && (
+                  <span
+                    className="recorder-event__type"
+                    style={{ background: '#334155', marginLeft: '4px' }}
+                  >
+                    Tab {event.tabId}
+                  </span>
+                )}
                 <span className="recorder-event__timestamp">{formatRelativeTime(event.timestamp)}</span>
               </div>
               <p className="recorder-event__url">{event.url}</p>

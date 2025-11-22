@@ -1,5 +1,4 @@
 import {
-  EventStore,
   createBaseEvent,
   createRuntimeOptions,
   domainMatches,
@@ -14,13 +13,16 @@ import {
   isSensitiveElement,
 } from '@/lib/dom';
 import { ScreenshotService } from '@/lib/screenshot';
+import { loadPreferences, updatePreferences } from '@/lib/preferences';
 import type {
   EventSubscriber,
   RecorderEvent,
+  RecordedEvent,
   RecorderFilters,
   RecorderPreferences,
   RecorderRuntimeOptions,
   SessionExport,
+  SessionMetadata,
 } from '@/lib/types';
 
 interface TypingBuffer {
@@ -42,7 +44,9 @@ const chromeApi: ChromeApi | undefined =
 let historyAlreadyPatched = false;
 
 export class RecorderRuntime {
-  private store = new EventStore();
+  private events: RecorderEvent[] = [];
+  private metadata: SessionMetadata = { sessionId: '', startedAt: '' };
+  private subscribers = new Set<EventSubscriber>();
   private screenshotService: ScreenshotService;
   private isRecording = false;
   private listenersAttached = false;
@@ -50,55 +54,120 @@ export class RecorderRuntime {
   private lastKnownUrl = typeof window !== 'undefined' ? window.location.href : '';
   private urlPollHandle: number | null = null;
   private navigationHandler = () => this.handleNavigationChange();
-  private preferences: RecorderPreferences = this.store.getPreferences();
+  private preferences: RecorderPreferences;
 
   constructor(options?: RecorderRuntimeOptions) {
     const runtimeOptions = createRuntimeOptions(options);
     this.screenshotService = new ScreenshotService(runtimeOptions.minimumScreenshotIntervalMs);
+    this.preferences = loadPreferences();
   }
 
   async initialize(): Promise<void> {
-    await this.store.loadFromDb();
     this.attachListeners();
     this.patchHistory();
     this.attachExtensionChannel();
+    await this.syncState();
   }
 
   subscribe(callback: EventSubscriber): () => void {
-    return this.store.subscribe(callback);
+    this.subscribers.add(callback);
+    callback(this.events);
+    return () => {
+      this.subscribers.delete(callback);
+    };
+  }
+
+  async addEvent(event: RecordedEvent): Promise<void> {
+    if (!chromeApi?.runtime) return;
+    try {
+      await chromeApi.runtime.sendMessage({ type: 'RECORD_EVENT', payload: event });
+    } catch (error) {
+      console.warn('[Recorder] Failed to send event to background', error);
+    }
   }
 
   private attachExtensionChannel(): void {
     if (!chromeApi?.runtime?.onMessage) return;
-    chromeApi.runtime.onMessage.addListener((message: { type?: string; payload?: Record<string, unknown> }) => {
-      if (message?.type === 'RECORDER_TAB_EVENT') {
-        void this.handleTabEvent(message.payload ?? {});
+    chromeApi.runtime.onMessage.addListener((message: { type?: string; payload?: any }) => {
+      switch (message?.type) {
+        case 'RECORDER_TAB_EVENT':
+          void this.handleTabEvent(message.payload ?? {});
+          break;
+        case 'EVENT_ADDED':
+          if (message.payload) {
+            this.handleExternalEvent(message.payload as RecorderEvent);
+          }
+          break;
+        case 'EVENTS_CLEARED':
+          this.events = [];
+          this.metadata = message.payload || { sessionId: crypto.randomUUID(), startedAt: new Date().toISOString() };
+          this.notifySubscribers();
+          break;
+        case 'STATE_UPDATE':
+          if (message.payload) {
+            this.isRecording = !!message.payload.isRecording;
+          }
+          break;
       }
     });
   }
 
+  private handleExternalEvent(event: RecorderEvent): void {
+    // Avoid duplicates if we just added it? 
+    // For simplicity, we can just rely on the background to broadcast back to us
+    // checking IDs can prevent duplicates
+    if (!this.events.some(e => e.id === event.id)) {
+      this.events = [...this.events, event];
+      this.events.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+      this.notifySubscribers();
+    }
+  }
+
+  private async syncState(): Promise<void> {
+    if (!chromeApi?.runtime) return;
+    try {
+      const response = await chromeApi.runtime.sendMessage({ type: 'GET_STATE' });
+      if (response) {
+        this.events = response.events || [];
+        this.metadata = response.metadata || { sessionId: '', startedAt: '' };
+        this.isRecording = response.isRecording || false;
+        this.notifySubscribers();
+      }
+    } catch (error) {
+      console.warn('[Recorder] Failed to sync state', error);
+    }
+  }
+
+  private notifySubscribers(): void {
+    const snapshot = this.getEvents();
+    this.subscribers.forEach((subscriber) => subscriber(snapshot));
+  }
+
   private async handleTabEvent(payload: Record<string, unknown>): Promise<void> {
     if (!this.isRecording) return;
-    const record = createBaseEvent('navigation', this.store.getMetadata().sessionId, {
+    const record = createBaseEvent('navigation', this.metadata.sessionId, {
       navigationUrl: (payload.url as string) ?? window.location.href,
     });
     record.meta = {
       ...record.meta,
       tabEvent: payload,
     };
-    await this.store.addEvent(record);
+    await this.addEvent(record);
   }
 
   getEvents(): RecorderEvent[] {
-    return this.store.getEvents();
+    return [...this.events];
   }
 
   getSessionMetadata() {
-    return this.store.getMetadata();
+    return { ...this.metadata };
   }
 
   exportSessionJSON(): SessionExport {
-    return this.store.exportSessionJSON();
+    return {
+      metadata: this.getSessionMetadata(),
+      events: this.getEvents(),
+    };
   }
 
   getPreferences(): RecorderPreferences {
@@ -110,12 +179,12 @@ export class RecorderRuntime {
   }
 
   setFilters(filters: RecorderFilters): RecorderFilters {
-    this.preferences = this.store.updatePreferences({ filters });
+    this.preferences = updatePreferences({ filters });
     return this.preferences.filters;
   }
 
   setTypedCaptureEnabled(enabled: boolean): void {
-    this.preferences = this.store.updatePreferences({ typedCaptureEnabled: enabled });
+    this.preferences = updatePreferences({ typedCaptureEnabled: enabled });
     if (!enabled) {
       void this.flushTypingBuffer('typed-disabled');
     }
@@ -126,20 +195,24 @@ export class RecorderRuntime {
   }
 
   async start(): Promise<void> {
+    if (!chromeApi?.runtime) return;
     this.isRecording = true;
     this.lastKnownUrl = window.location.href;
+    await chromeApi.runtime.sendMessage({ type: 'START_RECORDING' });
   }
 
   stop(): void {
+    if (!chromeApi?.runtime) return;
     this.isRecording = false;
     void this.flushTypingBuffer('stop');
-    this.store.markStopped();
+    chromeApi.runtime.sendMessage({ type: 'STOP_RECORDING' });
   }
 
   async clear(): Promise<void> {
+    if (!chromeApi?.runtime) return;
     this.isRecording = false;
     this.typingBuffer = null;
-    await this.store.clear();
+    await chromeApi.runtime.sendMessage({ type: 'CLEAR_EVENTS' });
   }
 
   destroy(): void {
@@ -220,14 +293,14 @@ export class RecorderRuntime {
       reason: 'click',
     });
 
-    const record = createBaseEvent('click', this.store.getMetadata().sessionId, {
+    const record = createBaseEvent('click', this.metadata.sessionId, {
       element: descriptor,
       coords,
       screenshotDataUrl: screenshot.dataUrl,
       screenshotError: screenshot.error,
     });
 
-    await this.store.addEvent(record);
+    await this.addEvent(record);
   };
 
   private handleKeydown = (event: KeyboardEvent): void => {
@@ -278,12 +351,12 @@ export class RecorderRuntime {
       state === 'visible'
         ? await this.screenshotService.capture({ allow: privacy.allowScreenshot, reason: 'visibility' })
         : { dataUrl: null };
-    const record = createBaseEvent('visibility', this.store.getMetadata().sessionId, {
+    const record = createBaseEvent('visibility', this.metadata.sessionId, {
       visibilityState: state,
       screenshotDataUrl: screenshot.dataUrl,
       screenshotError: screenshot.error,
     });
-    await this.store.addEvent(record);
+    await this.addEvent(record);
   };
 
   private async handleNavigationChange(): Promise<void> {
@@ -294,12 +367,12 @@ export class RecorderRuntime {
       allow: privacy.allowScreenshot,
       reason: 'navigation',
     });
-    const record = createBaseEvent('navigation', this.store.getMetadata().sessionId, {
+    const record = createBaseEvent('navigation', this.metadata.sessionId, {
       navigationUrl: window.location.href,
       screenshotDataUrl: screenshot.dataUrl,
       screenshotError: screenshot.error,
     });
-    await this.store.addEvent(record);
+    await this.addEvent(record);
   }
 
   private appendTypingCharacter(target: Element | null, value: string): void {
@@ -341,13 +414,13 @@ export class RecorderRuntime {
       allow: privacy.allowScreenshot,
       reason: `typing-${reason}`,
     });
-    const record = createBaseEvent('keypress', this.store.getMetadata().sessionId, {
+    const record = createBaseEvent('keypress', this.metadata.sessionId, {
       element: descriptor,
       typedText: typed,
       screenshotDataUrl: screenshot.dataUrl,
       screenshotError: screenshot.error,
     });
-    await this.store.addEvent(record);
+    await this.addEvent(record);
   }
 
   private clearTypingBuffer(): void {
@@ -372,14 +445,14 @@ export class RecorderRuntime {
       reason: `input-${reason}`,
     });
     const descriptor = this.describeElement(element, privacy);
-    const record = createBaseEvent('input_commit', this.store.getMetadata().sessionId, {
+    const record = createBaseEvent('input_commit', this.metadata.sessionId, {
       element: descriptor,
       typedText: typedValue,
       screenshotDataUrl: screenshot.dataUrl,
       screenshotError: screenshot.error,
     });
     record.meta = { ...record.meta, inputReason: reason };
-    await this.store.addEvent(record);
+    await this.addEvent(record);
   }
 
   private evaluatePrivacy(element: Element | null): PrivacyEvaluation {
@@ -435,4 +508,3 @@ export class RecorderRuntime {
 }
 
 export default RecorderRuntime;
-

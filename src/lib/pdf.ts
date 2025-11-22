@@ -103,7 +103,7 @@ async function renderEventBlock(doc: JsPDFDocument, event: RecorderEvent, startY
   doc.setFontSize(HEADING_FONT_SIZE);
   doc.setFont(undefined, 'bold');
   doc.setTextColor(0, 0, 0);
-  const eventHeader = `${event.type.toUpperCase()} — ${formatTimestamp(event.timestamp)}`;
+  const eventHeader = `${event.type.toUpperCase()}${event.tabId ? ` (Tab ${event.tabId})` : ''} — ${formatTimestamp(event.timestamp)}`;
   doc.text(eventHeader, left, cursorY);
   cursorY += LINE_HEIGHT + 4;
 
