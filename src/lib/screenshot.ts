@@ -1,4 +1,4 @@
-import type { ScreenshotResult } from './types';
+import type { ScreenshotResult, PortMessage } from './types';
 
 const chromeApi = typeof window === 'undefined' ? undefined : window.chrome;
 
@@ -7,13 +7,45 @@ interface ScreenshotOptions {
   reason?: string;
 }
 
+type PortGetter = () => chrome.runtime.Port | null;
+
 export class ScreenshotService {
   private lastCaptureTime = 0;
   private minInterval: number;
   private pendingPromise: Promise<ScreenshotResult> | null = null;
+  private portGetter: PortGetter | null;
+  private screenshotCallbacks = new Map<string, {
+    resolve: (result: ScreenshotResult) => void;
+    reject: (error: Error) => void;
+  }>();
 
-  constructor(minInterval = 700) {
+  constructor(minInterval = 700, portGetter?: PortGetter) {
     this.minInterval = minInterval;
+    this.portGetter = portGetter || null;
+    
+    // Set up port message listener for screenshot responses
+    if (portGetter && chromeApi?.runtime) {
+      // We need to listen to port messages - this will be set up by the caller
+      this.setupPortListener();
+    }
+  }
+
+  private setupPortListener(): void {
+    // The port listener is already set up in RecorderRuntime
+    // We'll handle screenshot responses through a callback mechanism
+  }
+
+  handleScreenshotResponse(requestId: string, dataUrl: string | null, error?: string): void {
+    const callback = this.screenshotCallbacks.get(requestId);
+    if (callback) {
+      this.screenshotCallbacks.delete(requestId);
+      
+      if (error) {
+        callback.resolve({ dataUrl: null, error });
+      } else {
+        callback.resolve({ dataUrl });
+      }
+    }
   }
 
   async capture(options: ScreenshotOptions = {}): Promise<ScreenshotResult> {
@@ -52,6 +84,20 @@ export class ScreenshotService {
 
   private async performCapture(reason?: string): Promise<ScreenshotResult> {
     this.lastCaptureTime = Date.now();
+    
+    // Try port-based capture first (preferred for multi-tab support)
+    if (this.portGetter) {
+      try {
+        const portResult = await this.tryPortCapture(reason);
+        if (portResult) {
+          return portResult;
+        }
+      } catch (error) {
+        console.warn('[Recorder] Port capture failed, falling back', error);
+      }
+    }
+    
+    // Try extension sendMessage capture
     try {
       const extensionResult = await this.tryExtensionCapture();
       if (extensionResult) {
@@ -61,6 +107,7 @@ export class ScreenshotService {
       console.warn('[Recorder] Extension capture failed', error);
     }
 
+    // Final fallback to html2canvas
     try {
       const canvasResult = await this.captureWithHtml2Canvas(reason);
       return { dataUrl: canvasResult };
@@ -72,6 +119,59 @@ export class ScreenshotService {
         error: message,
       };
     }
+  }
+
+  private async tryPortCapture(reason?: string): Promise<ScreenshotResult | null> {
+    if (!this.portGetter) return null;
+    
+    const port = this.portGetter();
+    if (!port) return null;
+
+    const requestId = crypto.randomUUID();
+    
+    return new Promise<ScreenshotResult>((resolve, reject) => {
+      // Set timeout in case response never comes
+      const timeout = setTimeout(() => {
+        this.screenshotCallbacks.delete(requestId);
+        reject(new Error('Screenshot request timeout'));
+      }, 10000);
+      
+      // Store callback
+      this.screenshotCallbacks.set(requestId, {
+        resolve: (result) => {
+          clearTimeout(timeout);
+          resolve(result);
+        },
+        reject: (error) => {
+          clearTimeout(timeout);
+          reject(error);
+        },
+      });
+      
+      // Set up one-time listener for this specific response
+      const messageListener = (message: PortMessage) => {
+        if (message.type === 'screenshot:response' && message.requestId === requestId) {
+          port.onMessage.removeListener(messageListener);
+          this.handleScreenshotResponse(message.requestId, message.dataUrl, message.error);
+        }
+      };
+      
+      port.onMessage.addListener(messageListener);
+      
+      // Send request
+      try {
+        port.postMessage({
+          type: 'screenshot:request',
+          requestId,
+          reason: reason || 'capture',
+        } as PortMessage);
+      } catch (error) {
+        clearTimeout(timeout);
+        this.screenshotCallbacks.delete(requestId);
+        port.onMessage.removeListener(messageListener);
+        reject(error);
+      }
+    });
   }
 
   private async tryExtensionCapture(): Promise<string | null> {

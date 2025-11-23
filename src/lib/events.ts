@@ -10,6 +10,7 @@ import type {
   RecorderRuntimeOptions,
   SessionExport,
   SessionMetadata,
+  TabSession,
 } from './types';
 
 interface RecorderDB extends DBSchema {
@@ -21,10 +22,14 @@ interface RecorderDB extends DBSchema {
     key: string;
     value: SessionMetadata;
   };
+  'tab-sessions': {
+    key: number;
+    value: TabSession;
+  };
 }
 
 const DB_NAME = 'browser-recorder';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Incremented for tab-sessions store
 
 function isIndexedDBAvailable(): boolean {
   return typeof indexedDB !== 'undefined';
@@ -45,12 +50,15 @@ export class EventStore {
     this.preferences = loadPreferences();
     if (isIndexedDBAvailable()) {
       this.dbPromise = openDB<RecorderDB>(DB_NAME, DB_VERSION, {
-        upgrade(db) {
+        upgrade(db, oldVersion) {
           if (!db.objectStoreNames.contains('events')) {
             db.createObjectStore('events');
           }
           if (!db.objectStoreNames.contains('metadata')) {
             db.createObjectStore('metadata');
+          }
+          if (oldVersion < 2 && !db.objectStoreNames.contains('tab-sessions')) {
+            db.createObjectStore('tab-sessions');
           }
         },
       }).catch((err) => {
@@ -181,6 +189,65 @@ export class EventStore {
       domainDenylist: filters.domainDenylist.map((entry) => entry.trim().toLowerCase()).filter(Boolean),
       selectorDenylist: filters.selectorDenylist.map((entry) => entry.trim()).filter(Boolean),
     };
+  }
+
+  // Tab-session management methods
+
+  async getTabSession(tabId: number): Promise<TabSession | null> {
+    if (!this.dbPromise) return null;
+    try {
+      const db = await this.dbPromise;
+      if (!db) return null;
+      return (await db.get('tab-sessions', tabId)) ?? null;
+    } catch (error) {
+      console.warn('[Recorder] Failed to get tab session', error);
+      return null;
+    }
+  }
+
+  async saveTabSession(tabId: number, session: TabSession): Promise<void> {
+    if (!this.dbPromise) return;
+    try {
+      const db = await this.dbPromise;
+      if (!db) return;
+      await db.put('tab-sessions', session, tabId);
+    } catch (error) {
+      console.warn('[Recorder] Failed to save tab session', error);
+    }
+  }
+
+  async getAllTabSessions(): Promise<TabSession[]> {
+    if (!this.dbPromise) return [];
+    try {
+      const db = await this.dbPromise;
+      if (!db) return [];
+      return await db.getAll('tab-sessions');
+    } catch (error) {
+      console.warn('[Recorder] Failed to get all tab sessions', error);
+      return [];
+    }
+  }
+
+  async deleteTabSession(tabId: number): Promise<void> {
+    if (!this.dbPromise) return;
+    try {
+      const db = await this.dbPromise;
+      if (!db) return;
+      await db.delete('tab-sessions', tabId);
+    } catch (error) {
+      console.warn('[Recorder] Failed to delete tab session', error);
+    }
+  }
+
+  async clearTabSessions(): Promise<void> {
+    if (!this.dbPromise) return;
+    try {
+      const db = await this.dbPromise;
+      if (!db) return;
+      await db.clear('tab-sessions');
+    } catch (error) {
+      console.warn('[Recorder] Failed to clear tab sessions', error);
+    }
   }
 }
 

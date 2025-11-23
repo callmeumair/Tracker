@@ -90,3 +90,48 @@ export interface RecorderRuntimeOptions {
   minimumScreenshotIntervalMs?: number;
 }
 
+// Multi-tab recording support
+
+export interface TabSession {
+  tabId: number;
+  windowId: number;
+  url: string;
+  events: RecorderEvent[];
+  lastScreenshotTime: number;
+  isRecording: boolean;
+  createdAt: string;
+  closedAt?: string;
+}
+
+export interface TabSessionMetadata {
+  tabId: number;
+  url: string;
+  eventCount: number;
+  firstEventTime?: string;
+  lastEventTime?: string;
+}
+
+export interface MergedSessionExport extends SessionExport {
+  tabSessions: TabSessionMetadata[];
+}
+
+// Port-based communication messages
+
+export type PortMessage =
+  | { type: 'tab:init'; tabId?: number }
+  | { type: 'tab:event'; event: RecordedEvent }
+  | { type: 'screenshot:request'; requestId: string; reason: string }
+  | { type: 'screenshot:response'; requestId: string; dataUrl: string | null; error?: string }
+  | { type: 'state:update'; isRecording: boolean }
+  | { type: 'recording:start' }
+  | { type: 'recording:stop' };
+
+export interface ScreenshotRequest {
+  requestId: string;
+  tabId: number;
+  timestamp: number;
+  reason: string;
+  resolve: (result: ScreenshotResult) => void;
+  reject: (error: Error) => void;
+}
+

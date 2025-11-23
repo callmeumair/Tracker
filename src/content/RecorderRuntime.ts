@@ -23,6 +23,7 @@ import type {
   RecorderRuntimeOptions,
   SessionExport,
   SessionMetadata,
+  PortMessage,
 } from '@/lib/types';
 
 interface TypingBuffer {
@@ -55,16 +56,24 @@ export class RecorderRuntime {
   private urlPollHandle: number | null = null;
   private navigationHandler = () => this.handleNavigationChange();
   private preferences: RecorderPreferences;
+  private port: chrome.runtime.Port | null = null;
+  private portReconnectAttempts = 0;
+  private readonly MAX_RECONNECT_ATTEMPTS = 5;
+  private eventQueue: RecordedEvent[] = [];
 
   constructor(options?: RecorderRuntimeOptions) {
     const runtimeOptions = createRuntimeOptions(options);
-    this.screenshotService = new ScreenshotService(runtimeOptions.minimumScreenshotIntervalMs);
+    this.screenshotService = new ScreenshotService(
+      runtimeOptions.minimumScreenshotIntervalMs,
+      () => this.port // Pass port getter to ScreenshotService
+    );
     this.preferences = loadPreferences();
   }
 
   async initialize(): Promise<void> {
     this.attachListeners();
     this.patchHistory();
+    this.connectPort();
     this.attachExtensionChannel();
     await this.syncState();
   }
@@ -79,11 +88,120 @@ export class RecorderRuntime {
 
   async addEvent(event: RecordedEvent): Promise<void> {
     if (!chromeApi?.runtime) return;
-    try {
-      await chromeApi.runtime.sendMessage({ type: 'RECORD_EVENT', payload: event });
-    } catch (error) {
-      console.warn('[Recorder] Failed to send event to background', error);
+    
+    // Try to send via port first (preferred)
+    if (this.port) {
+      try {
+        this.port.postMessage({
+          type: 'tab:event',
+          event,
+        } as PortMessage);
+        return;
+      } catch (error) {
+        console.warn('[Recorder] Failed to send event via port, falling back to sendMessage', error);
+        this.port = null; // Mark port as disconnected
+        this.eventQueue.push(event); // Queue event
+        void this.reconnectPort(); // Attempt reconnection
+      }
     }
+    
+    // Fallback to sendMessage if port unavailable
+    if (!this.port) {
+      this.eventQueue.push(event);
+      
+      // Try sendMessage as last resort
+      try {
+        await chromeApi.runtime.sendMessage({ type: 'RECORD_EVENT', payload: event });
+        // If successful, clear the queue
+        this.eventQueue = [];
+      } catch (error) {
+        console.warn('[Recorder] Failed to send event to background', error);
+      }
+    }
+  }
+
+  private connectPort(): void {
+    if (!chromeApi?.runtime) return;
+    
+    try {
+      this.port = chromeApi.runtime.connect({ name: 'recorder-tab' });
+      console.log('[Recorder] Port connected to background');
+      
+      this.portReconnectAttempts = 0; // Reset attempts on successful connection
+      
+      // Set up port message listener
+      this.port.onMessage.addListener((message: PortMessage) => {
+        this.handlePortMessage(message);
+      });
+      
+      // Handle disconnection
+      this.port.onDisconnect.addListener(() => {
+        console.log('[Recorder] Port disconnected');
+        this.port = null;
+        void this.reconnectPort();
+      });
+      
+      // Send init message
+      this.port.postMessage({ type: 'tab:init' } as PortMessage);
+      
+      // Flush any queued events
+      this.flushEventQueue();
+      
+    } catch (error) {
+      console.warn('[Recorder] Failed to connect port', error);
+      this.port = null;
+      void this.reconnectPort();
+    }
+  }
+
+  private handlePortMessage(message: PortMessage): void {
+    switch (message.type) {
+      case 'state:update':
+        this.isRecording = message.isRecording;
+        break;
+      case 'recording:start':
+        this.isRecording = true;
+        break;
+      case 'recording:stop':
+        this.isRecording = false;
+        break;
+      // screenshot:response is handled directly in ScreenshotService
+    }
+  }
+
+  private async reconnectPort(): Promise<void> {
+    if (this.portReconnectAttempts >= this.MAX_RECONNECT_ATTEMPTS) {
+      console.warn('[Recorder] Max port reconnection attempts reached');
+      return;
+    }
+    
+    this.portReconnectAttempts++;
+    const delay = Math.min(1000 * this.portReconnectAttempts, 5000);
+    
+    console.log('[Recorder] Attempting port reconnection in', delay, 'ms');
+    
+    await new Promise(resolve => setTimeout(resolve, delay));
+    this.connectPort();
+  }
+
+  private flushEventQueue(): void {
+    if (!this.port || this.eventQueue.length === 0) return;
+    
+    console.log('[Recorder] Flushing', this.eventQueue.length, 'queued events');
+    
+    for (const event of this.eventQueue) {
+      try {
+        this.port.postMessage({
+          type: 'tab:event',
+          event,
+        } as PortMessage);
+      } catch (error) {
+        console.warn('[Recorder] Failed to flush event', error);
+        break;
+      }
+    }
+    
+    this.eventQueue = [];
   }
 
   private attachExtensionChannel(): void {
@@ -227,6 +345,10 @@ export class RecorderRuntime {
     if (this.urlPollHandle) {
       window.clearInterval(this.urlPollHandle);
       this.urlPollHandle = null;
+    }
+    if (this.port) {
+      this.port.disconnect();
+      this.port = null;
     }
     this.listenersAttached = false;
   }

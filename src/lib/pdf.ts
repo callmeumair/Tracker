@@ -1,4 +1,4 @@
-import type { PdfProgress, RecorderEvent, SessionExport } from './types';
+import type { PdfProgress, RecorderEvent, SessionExport, MergedSessionExport } from './types';
 
 interface PdfOptions {
   onProgress?: (progress: PdfProgress) => void;
@@ -16,7 +16,7 @@ const HEADING_FONT_SIZE = 16;
 const BODY_FONT_SIZE = 11;
 const LABEL_FONT_SIZE = 10;
 
-export async function generatePDFReport(session: SessionExport, options: PdfOptions = {}): Promise<void> {
+export async function generatePDFReport(session: SessionExport | MergedSessionExport, options: PdfOptions = {}): Promise<void> {
   const { jsPDF } = await import('jspdf');
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   const events = [...session.events].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
@@ -53,7 +53,7 @@ export async function generatePDFReport(session: SessionExport, options: PdfOpti
   doc.save(filename);
 }
 
-function addTitlePage(doc: JsPDFDocument, session: SessionExport) {
+function addTitlePage(doc: JsPDFDocument, session: SessionExport | MergedSessionExport) {
   // Title with better spacing
   doc.setFontSize(TITLE_FONT_SIZE);
   doc.setFont(undefined, 'bold');
@@ -64,7 +64,10 @@ function addTitlePage(doc: JsPDFDocument, session: SessionExport) {
   doc.setFontSize(BODY_FONT_SIZE);
   doc.setFont(undefined, 'normal');
   doc.setTextColor(60, 60, 60); // Dark gray
-  doc.text('Session Report', PAGE_MARGIN, PAGE_MARGIN + 50);
+  
+  const isMerged = 'tabSessions' in session && Array.isArray(session.tabSessions);
+  const subtitle = isMerged ? 'Multi-Tab Session Report' : 'Session Report';
+  doc.text(subtitle, PAGE_MARGIN, PAGE_MARGIN + 50);
   
   // Metadata section
   doc.setFontSize(BODY_FONT_SIZE);
@@ -79,6 +82,11 @@ function addTitlePage(doc: JsPDFDocument, session: SessionExport) {
     ['Domains', domains.join(', ') || '(none)'],
   ];
 
+  // Add tab information if this is a merged session
+  if (isMerged && session.tabSessions.length > 0) {
+    rows.push(['Tabs tracked', String(session.tabSessions.length)]);
+  }
+
   let offsetY = PAGE_MARGIN + 90;
   rows.forEach(([label, value]) => {
     doc.setFont(undefined, 'bold');
@@ -91,6 +99,35 @@ function addTitlePage(doc: JsPDFDocument, session: SessionExport) {
     wrapText(doc, value, PAGE_MARGIN + 140, offsetY, 420);
     offsetY += LINE_HEIGHT * Math.max(1, Math.ceil(value.length / 70)) + 4; // Better spacing
   });
+
+  // Add tab session summary if merged
+  if (isMerged && session.tabSessions.length > 0) {
+    offsetY += LINE_HEIGHT;
+    doc.setFont(undefined, 'bold');
+    doc.setFontSize(HEADING_FONT_SIZE);
+    doc.setTextColor(0, 0, 0);
+    doc.text('Tab Sessions', PAGE_MARGIN, offsetY);
+    offsetY += LINE_HEIGHT + 8;
+
+    session.tabSessions.forEach((tabSession) => {
+      doc.setFont(undefined, 'bold');
+      doc.setFontSize(BODY_FONT_SIZE);
+      doc.setTextColor(0, 0, 0);
+      doc.text(`Tab ${tabSession.tabId}:`, PAGE_MARGIN, offsetY);
+      
+      doc.setFont(undefined, 'normal');
+      doc.setFontSize(LABEL_FONT_SIZE);
+      doc.setTextColor(60, 60, 60);
+      
+      const tabInfo = [
+        `${tabSession.eventCount} events`,
+        tabSession.url ? `URL: ${tabSession.url.substring(0, 60)}${tabSession.url.length > 60 ? '...' : ''}` : '',
+      ].filter(Boolean).join(' • ');
+      
+      doc.text(tabInfo, PAGE_MARGIN + 60, offsetY);
+      offsetY += LINE_HEIGHT;
+    });
+  }
 
   doc.addPage();
 }

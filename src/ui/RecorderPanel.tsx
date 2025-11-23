@@ -18,6 +18,8 @@ export function RecorderPanel({ runtime }: RecorderPanelProps) {
   const [events, setEvents] = useState<RecorderEvent[]>(runtime.getEvents());
   const [isRecording, setIsRecording] = useState(runtime.isRecordingActive());
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedTabId, setSelectedTabId] = useState<number | 'all'>('all');
+  const [viewMode, setViewMode] = useState<'merged' | 'per-tab'>('merged');
   const [typeFilters, setTypeFilters] = useState<Record<RecorderEvent['type'], boolean>>(
     EVENT_TYPES.reduce(
       (acc, type) => {
@@ -43,8 +45,35 @@ export function RecorderPanel({ runtime }: RecorderPanelProps) {
   }, [runtime]);
 
   const filteredEvents = useMemo(() => {
-    return events.filter((event) => typeFilters[event.type] && matchesSearch(event, searchQuery));
-  }, [events, typeFilters, searchQuery]);
+    let filtered = events.filter((event) => typeFilters[event.type] && matchesSearch(event, searchQuery));
+    
+    // Apply tab filter
+    if (viewMode === 'per-tab' && selectedTabId !== 'all') {
+      filtered = filtered.filter((event) => event.tabId === selectedTabId);
+    }
+    
+    return filtered;
+  }, [events, typeFilters, searchQuery, selectedTabId, viewMode]);
+
+  // Get unique tab IDs from events for the tab selector
+  const availableTabs = useMemo(() => {
+    const tabIds = new Set<number>();
+    events.forEach((event) => {
+      if (event.tabId) {
+        tabIds.add(event.tabId);
+      }
+    });
+    return Array.from(tabIds).sort((a, b) => a - b);
+  }, [events]);
+
+  const getTabEventCount = (tabId: number) => {
+    return events.filter((e) => e.tabId === tabId).length;
+  };
+
+  const getTabColor = (tabId: number) => {
+    const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+    return colors[tabId % colors.length];
+  };
 
   const handleStart = async () => {
     await runtime.start();
@@ -85,7 +114,21 @@ export function RecorderPanel({ runtime }: RecorderPanelProps) {
     const controller = new AbortController();
     setPdfState({ status: 'generating', percent: 0, stage: 'Preparing', controller });
     try {
-      await generatePDFReport(runtime.exportSessionJSON(), {
+      // Get merged session from background
+      let sessionData = runtime.exportSessionJSON();
+      
+      if (typeof chrome !== 'undefined' && chrome.runtime) {
+        try {
+          const mergedSession = await chrome.runtime.sendMessage({ type: 'GET_MERGED_SESSION' });
+          if (mergedSession) {
+            sessionData = mergedSession;
+          }
+        } catch (error) {
+          console.warn('[RecorderPanel] Failed to get merged session, using local data', error);
+        }
+      }
+      
+      await generatePDFReport(sessionData, {
         signal: controller.signal,
         onProgress: (progress) => {
           setPdfState({
@@ -220,6 +263,67 @@ export function RecorderPanel({ runtime }: RecorderPanelProps) {
         </button>
       </section>
 
+      <section className="recorder-panel__view-controls">
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+          <button
+            type="button"
+            onClick={() => setViewMode('merged')}
+            style={{
+              flex: 1,
+              padding: '6px 12px',
+              background: viewMode === 'merged' ? '#3b82f6' : '#334155',
+              border: 'none',
+              borderRadius: '6px',
+              color: '#f8fafc',
+              cursor: 'pointer',
+              fontSize: '13px',
+            }}
+          >
+            Merged Timeline
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('per-tab')}
+            style={{
+              flex: 1,
+              padding: '6px 12px',
+              background: viewMode === 'per-tab' ? '#3b82f6' : '#334155',
+              border: 'none',
+              borderRadius: '6px',
+              color: '#f8fafc',
+              cursor: 'pointer',
+              fontSize: '13px',
+            }}
+          >
+            Per-Tab View
+          </button>
+        </div>
+
+        {viewMode === 'per-tab' && (
+          <select
+            value={selectedTabId}
+            onChange={(event) => setSelectedTabId(event.target.value === 'all' ? 'all' : Number(event.target.value))}
+            style={{
+              width: '100%',
+              padding: '8px',
+              background: '#1e293b',
+              border: '1px solid #334155',
+              borderRadius: '6px',
+              color: '#f8fafc',
+              fontSize: '13px',
+              marginBottom: '8px',
+            }}
+          >
+            <option value="all">All Tabs</option>
+            {availableTabs.map((tabId) => (
+              <option key={tabId} value={tabId}>
+                Tab {tabId} ({getTabEventCount(tabId)} events)
+              </option>
+            ))}
+          </select>
+        )}
+      </section>
+
       <section className="recorder-panel__search">
         <input
           type="text"
@@ -252,7 +356,14 @@ export function RecorderPanel({ runtime }: RecorderPanelProps) {
                 {event.tabId && (
                   <span
                     className="recorder-event__type"
-                    style={{ background: '#334155', marginLeft: '4px' }}
+                    style={{
+                      background: getTabColor(event.tabId),
+                      marginLeft: '4px',
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      fontSize: '11px',
+                      fontWeight: '600',
+                    }}
                   >
                     Tab {event.tabId}
                   </span>
