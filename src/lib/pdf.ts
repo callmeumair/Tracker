@@ -154,6 +154,15 @@ async function renderEventBlock(doc: JsPDFDocument, event: RecorderEvent, startY
   wrapText(doc, event.url, left + 40, cursorY, 450);
   cursorY += LINE_HEIGHT * 2 + 2;
 
+  // Special handling for tab_visible_screenshot events
+  if (event.type === 'tab_visible_screenshot') {
+    doc.setFont(undefined, 'italic');
+    doc.setFontSize(BODY_FONT_SIZE);
+    doc.setTextColor(100, 100, 100);
+    doc.text('Tab became visible/active', left, cursorY);
+    cursorY += LINE_HEIGHT + 4;
+  }
+
   if (event.element) {
     const descriptor = buildElementDescription(event);
     doc.setFont(undefined, 'bold');

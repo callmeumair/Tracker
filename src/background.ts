@@ -454,6 +454,11 @@ async function handleTabCreated(tab: chrome.tabs.Tab) {
         });
       }, 500); // Small delay to ensure content script is loaded
     }
+
+    // Capture screenshot for new tab after it loads
+    setTimeout(() => {
+      void captureTabSwitchScreenshot(tab.id!, 0);
+    }, 500);
   }
 }
 
@@ -476,6 +481,9 @@ async function handleTabActivated(activeInfo: chrome.tabs.OnActivatedInfo) {
     eventType: 'tab_activated', 
     ...activeInfo 
   });
+
+  // Capture screenshot for newly activated tab
+  void captureTabSwitchScreenshot(activeInfo.tabId);
 }
 
 async function handleTabUpdated(
@@ -537,4 +545,85 @@ function notifyTab(tabId: number, payload: Record<string, unknown>) {
   chrome.tabs.sendMessage(tabId, { type: TAB_EVENT, payload }, () => {
     void chrome.runtime.lastError;
   });
+}
+
+// ============================================================================
+// Tab Switch Screenshot Capture
+// ============================================================================
+
+async function captureTabSwitchScreenshot(tabId: number, retryCount = 0): Promise<void> {
+  const session = tabSessions.get(tabId);
+  if (!session) {
+    console.log('[Background] Tab switch screenshot skipped - no session for tab', tabId);
+    return;
+  }
+
+  // Only capture if recording is active
+  if (!globalIsRecording) {
+    return;
+  }
+
+  const now = Date.now();
+  const elapsed = now - session.lastScreenshotTime;
+
+  // Apply per-tab throttling
+  if (elapsed < MIN_SCREENSHOT_INTERVAL_MS) {
+    console.log('[Background] Tab switch screenshot throttled for tab', tabId, 'elapsed:', elapsed, 'ms');
+    return;
+  }
+
+  try {
+    // Get tab details for URL
+    const tab = await chrome.tabs.get(tabId);
+    
+    // Skip if tab doesn't have a valid URL
+    if (!tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
+      console.log('[Background] Tab switch screenshot skipped - restricted URL', tab.url);
+      return;
+    }
+
+    // Capture screenshot
+    const dataUrl = await chrome.tabs.captureVisibleTab(
+      session.windowId,
+      { format: 'png' }
+    );
+
+    session.lastScreenshotTime = now;
+
+    // Create tab_visible_screenshot event
+    const event: RecordedEvent = {
+      id: crypto.randomUUID(),
+      sessionId: store.getMetadata().sessionId,
+      type: 'tab_visible_screenshot',
+      tabId,
+      timestamp: new Date().toISOString(),
+      url: tab.url || '',
+      screenshotDataUrl: dataUrl,
+      meta: {
+        browser: 'Chrome',
+        userAgent: 'background-capture',
+      },
+    };
+
+    // Store in session and database
+    session.events.push(event);
+    await store.addEvent(event);
+    await store.saveTabSession(tabId, session);
+
+    // Broadcast to all tabs so UIs can update
+    await broadcast({ type: 'EVENT_ADDED', payload: event });
+
+    console.log('[Background] Tab switch screenshot captured for tab', tabId);
+
+  } catch (error) {
+    console.warn('[Background] Tab switch screenshot failed for tab', tabId, error);
+
+    // Retry once after 150ms if first attempt
+    if (retryCount === 0) {
+      console.log('[Background] Scheduling retry for tab', tabId);
+      setTimeout(() => {
+        void captureTabSwitchScreenshot(tabId, 1);
+      }, 150);
+    }
+  }
 }

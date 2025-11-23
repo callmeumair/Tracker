@@ -4,7 +4,7 @@ import type { RecorderEvent, RecorderFilters } from '@/lib/types';
 import { generatePDFReport } from '@/lib/pdf';
 import './RecorderPanel.css';
 
-const EVENT_TYPES: RecorderEvent['type'][] = ['click', 'keypress', 'input_commit', 'navigation', 'visibility'];
+const EVENT_TYPES: RecorderEvent['type'][] = ['click', 'keypress', 'input_commit', 'navigation', 'visibility', 'tab_visible_screenshot'];
 
 interface RecorderPanelProps {
   runtime: RecorderRuntime;
@@ -371,6 +371,11 @@ export function RecorderPanel({ runtime }: RecorderPanelProps) {
                 <span className="recorder-event__timestamp">{formatRelativeTime(event.timestamp)}</span>
               </div>
               <p className="recorder-event__url">{event.url}</p>
+              {event.type === 'tab_visible_screenshot' && (
+                <p className="recorder-event__text" style={{ fontStyle: 'italic', color: '#94a3b8' }}>
+                  Tab became visible
+                </p>
+              )}
               {event.element?.textSnippet && <p className="recorder-event__text">{event.element.textSnippet}</p>}
               {event.typedText && <p className="recorder-event__typed">Typed: {event.typedText}</p>}
               {event.screenshotDataUrl && (

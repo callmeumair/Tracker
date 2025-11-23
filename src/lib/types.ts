@@ -3,7 +3,8 @@ export type RecorderEventType =
   | 'keypress'
   | 'input_commit'
   | 'navigation'
-  | 'visibility';
+  | 'visibility'
+  | 'tab_visible_screenshot';
 
 export interface ElementDescriptor {
   tag: string;
